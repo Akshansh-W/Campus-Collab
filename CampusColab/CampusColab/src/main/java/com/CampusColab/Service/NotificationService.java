@@ -26,7 +26,8 @@ public class NotificationService {
         notification.setStudent(joinRequest.getStudent());
         notification.setTitle("Application Declined");
         notification.setMessage(
-                STR."Your application for \{joinRequest.getAppliedRole()} in \{joinRequest.getProject().getProjectName()} was declined."
+                "Your application for " + joinRequest.getAppliedRole() + " in "
+                        + joinRequest.getProject().getProjectName() + " was declined."
         );
         notification.setType("APPLICATION_DECLINED");
         notification.setCreatedAt(LocalDateTime.now());
@@ -40,7 +41,8 @@ public class NotificationService {
         notification.setStudent(joinRequest.getStudent());
         notification.setTitle("Application Accepted");
         notification.setMessage(
-                STR."Your application for \{joinRequest.getAppliedRole()} in \{joinRequest.getProject().getProjectName()} was accepted."
+                "Your application for " + joinRequest.getAppliedRole() + " in "
+                        + joinRequest.getProject().getProjectName() + " was accepted."
         );
         notification.setType("APPLICATION_ACCEPTED");
         notification.setCreatedAt(LocalDateTime.now());
@@ -53,9 +55,9 @@ public class NotificationService {
         notification.setStudent(student);
         notification.setTitle("Project Completed !!");
         notification.setMessage(
-                STR."""
-\{project.getProjectName()} has been marked as completed by the project admin \{project.getAdmin().getStudentName()}
-Your project statistics have been updated."""
+                project.getProjectName() + " has been marked as completed by the project admin "
+                        + project.getAdmin().getStudentName()
+                        + "\nYour project statistics have been updated."
         );
         notification.setType("PROJECT_COMPLETE");
         notification.setCreatedAt(LocalDateTime.now());

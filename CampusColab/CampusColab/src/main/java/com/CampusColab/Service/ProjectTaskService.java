@@ -139,7 +139,8 @@ public class ProjectTaskService {
 
     private ResponseEntity<DTO.ApiResponse> invalidTransition(String currentStatus, String targetStatus) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new DTO.ApiResponse(STR."Cannot move a task from \{currentStatus} to \{targetStatus}"));
+                .body(new DTO.ApiResponse(
+                        "Cannot move a task from " + currentStatus + " to " + targetStatus));
     }
 
     public ResponseEntity<?> changeStatus(int taskId, String expectedStatus, String targetStatus) {

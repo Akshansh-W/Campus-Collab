@@ -72,7 +72,10 @@ public class AIService {
     public int[] getRecommendedProjects(List<Project> projects, long rollNumber){
         StringBuilder projectData = new StringBuilder();
         for(Project project : projects){
-            projectData.append(STR."\{project.getProjectId()} : \{project.getTechStack()} , ");
+            projectData.append(project.getProjectId())
+                    .append(" : ")
+                    .append(project.getTechStack())
+                    .append(" , ");
         }
         Student student = studentRepository.findByRollNumber(rollNumber);
 
@@ -110,9 +113,9 @@ public class AIService {
                 """;
 
         for(Project project : projects){
-            prompt += (STR."""
-\{project.getProjectId()} \{taskService.getCompletedTasks(project.getProjectId())} \{project.getOverview()}
-""");
+            prompt += project.getProjectId() + " "
+                    + taskService.getCompletedTasks(project.getProjectId()) + " "
+                    + project.getOverview() + "\n";
         }
 
         GenerateContentResponse response = client.models.generateContent("gemini-3.7-flash",prompt,null);
