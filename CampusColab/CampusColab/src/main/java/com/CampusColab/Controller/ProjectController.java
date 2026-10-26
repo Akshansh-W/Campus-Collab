@@ -1,6 +1,7 @@
 package com.CampusColab.Controller;
 
 import com.CampusColab.DTO.DTO;
+import com.CampusColab.ExceptionHandler.AppException;
 import com.CampusColab.Model.Project;
 import com.CampusColab.Model.Student;
 import com.CampusColab.Service.*;
@@ -58,7 +59,9 @@ public class ProjectController {
             List<Project> projects = projectService.findProjects(student);
             return ResponseEntity.status(HttpStatus.OK).body(projects);
         }catch(Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            e.printStackTrace();
+            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Failed to load data");
+            //return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
 
     }
