@@ -9,6 +9,8 @@ import com.CampusColab.Model.Student;
 import com.CampusColab.Repository.ProjectJoinRequestRepository;
 import com.CampusColab.Repository.ProjectMemberRepository;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +18,8 @@ import java.util.List;
 
 @Service
 public class ProjectJoinRequestService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjectJoinRequestService.class);
 
     private final StudentService studentService;
     private final ProjectService projectService;
@@ -38,9 +42,18 @@ public class ProjectJoinRequestService {
     }
 
     public void submitJoinRequest(DTO.JoinRequest joinRequest){
+        int projectId;
+        try {
+            projectId = Integer.parseInt(joinRequest.projectId());
+        } catch (NumberFormatException e) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Project id must be a number", e);
+        }
         Student student = studentService.findStudent(joinRequest.rollNumber());
-        Project project = projectService.findProject(Integer.parseInt(joinRequest.projectId()));
+        Project project = projectService.findProject(projectId);
 
+        if (student == null || project == null) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Student or project not found");
+        }
         if(project.getAdmin().getStudentName().equals(student.getStudentName())){
             throw new AppException(HttpStatus.BAD_REQUEST,"Admin can't applied for role in their project !");
         }
@@ -66,7 +79,7 @@ public class ProjectJoinRequestService {
 
         ProjectJoinRequest pjr =
                 joinRequestRepository.save(joinRequest1);
-
+        log.info("Saved join request requestId={} projectId={}", pjr.getRequestId(), project.getProjectId());
     }
 
     @Transactional
@@ -80,7 +93,7 @@ public class ProjectJoinRequestService {
             joinRequestRepository.deleteById(requestId);
             notificationService.sendDeclinedNotification(joinRequest);
         }catch (Exception e){
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Unexpected error arise");
+            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Unexpected error arise", e);
         }
     }
 
@@ -104,13 +117,13 @@ public class ProjectJoinRequestService {
             joinRequestRepository.deleteById(requestId);
             notificationService.sendAcceptNotification(joinRequest);
         } catch (Exception e){
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Unexpected Error");
+            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Unexpected Error", e);
         }
     }
 
     public List<DTO.JoinRequestResponse> getAllRequest(int projectId){
         List<ProjectJoinRequest> requests = joinRequestRepository.findByProject_ProjectId(projectId);
-        return requests.stream()
+        List<DTO.JoinRequestResponse> response = requests.stream()
                 .map(request -> new DTO.JoinRequestResponse(
                         request.getRequestId(),
                         request.getStudent().getStudentName(),
@@ -120,6 +133,7 @@ public class ProjectJoinRequestService {
                         request.getMessage()
                 ))
                 .toList();
-
+        log.debug("Loaded {} join requests for projectId={}", response.size(), projectId);
+        return response;
     }
 }

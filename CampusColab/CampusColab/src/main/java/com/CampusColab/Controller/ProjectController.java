@@ -10,6 +10,8 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -19,6 +21,8 @@ import java.util.List;
 @RequestMapping("/project")
 @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class ProjectController {
+
+    private static final Logger log = LoggerFactory.getLogger(ProjectController.class);
 
     private final ProjectService projectService;
     private final StudentService studentService;
@@ -39,85 +43,67 @@ public class ProjectController {
     // Get starting 10 projects in database at first, then next 10 in another call
     @GetMapping("/getProjects")
     public ResponseEntity<?> getProjects(@RequestParam int page, @RequestParam int size) {
-        try {
-            Page<Project> projects = projectService.findAllProjects(page,size);
-            Page<DTO.ProjectResponse> response = projects.map(DTO.ProjectResponse::fromEntity);
-            return ResponseEntity.status(HttpStatus.OK).body(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new DTO.ApiResponse("Failed to fetch Projects"));
-        }
+        Page<Project> projects = projectService.findAllProjects(page,size);
+        Page<DTO.ProjectResponse> response = projects.map(DTO.ProjectResponse::fromEntity);
+        log.info("Fetched projects page={} size={} resultCount={}", page, size, projects.getNumberOfElements());
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     // Get all projects uploaded by a roll Number
     @PostMapping("/getProject")
     ResponseEntity<?> getProject(@RequestBody Long rollNumber){
-        try {
-            Student student = studentService.findStudent(rollNumber);
-            if (student == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body( new DTO.ApiResponse("Roll number can't be empty"));
-            }
-            List<Project> projects = projectService.findProjects(student);
-            return ResponseEntity.status(HttpStatus.OK).body(projects);
-        }catch(Exception e){
-            e.printStackTrace();
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Failed to load data");
-            //return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        Student student = studentService.findStudent(rollNumber);
+        if (student == null) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Student not found");
         }
-
+        List<Project> projects = projectService.findProjects(student);
+        log.info("Fetched {} projects for a student", projects.size());
+        return ResponseEntity.status(HttpStatus.OK).body(projects);
     }
 
     @Transactional
     @PostMapping("/deleteProject")
     ResponseEntity<?> deleteProject(@RequestBody Integer projectId){
         if(projectId == null){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new DTO.ApiResponse("ProjectId is empty"));
+            throw new AppException(HttpStatus.BAD_REQUEST, "ProjectId is required");
         }
-        try{
-            memberService.deleteMember(projectId);
-            taskService.deleteTask(projectId);
-            projectService.deleteProject(projectId);
-            return ResponseEntity.status(HttpStatus.OK).body(new DTO.ApiResponse("Project is deleted"));
-        }catch(Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        memberService.deleteMember(projectId);
+        taskService.deleteTask(projectId);
+        projectService.deleteProject(projectId);
+        log.info("Deleted project id={}", projectId);
+        return ResponseEntity.status(HttpStatus.OK).body(new DTO.ApiResponse("Project is deleted"));
     }
 
     @GetMapping("/findProject/{projectId}")
     public ResponseEntity<?> findProject(@PathVariable Integer projectId) {
-        try {
-            Project project = projectService.findProject(projectId);
-            if (project != null) {
-                DTO.ProjectResponse response = DTO.ProjectResponse.fromEntity(project);
-                return ResponseEntity.status(HttpStatus.OK).body(response);
-            } else {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new DTO.ApiResponse("Project not found"));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new DTO.ApiResponse("Failed to fetch project"));
+        Project project = projectService.findProject(projectId);
+        if (project == null) {
+            throw new AppException(HttpStatus.NOT_FOUND, "Project not found");
         }
+        log.info("Fetched project id={}", projectId);
+        DTO.ProjectResponse response = DTO.ProjectResponse.fromEntity(project);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     @PostMapping("/uploadProject")
     public ResponseEntity<?> uploadProject(@RequestBody DTO.ProjectRequest projectRequest){
         if(projectRequest == null){
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new DTO.ApiResponse("project can't be null"));
+            throw new AppException(HttpStatus.BAD_REQUEST, "Project details are required");
         }
-        try{
-            Project savedProject = projectService.saveProject(projectRequest);
-            return ResponseEntity.status(HttpStatus.OK).body(savedProject);
-    }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new DTO.ApiResponse("Error occur while uploading project"));
-        }
+        Project savedProject = projectService.saveProject(projectRequest);
+        log.info("Created project id={}", savedProject.getProjectId());
+        return ResponseEntity.status(HttpStatus.OK).body(savedProject);
     }
 
     @PostMapping("/submitRatings")
     @Transactional
     public ResponseEntity<?> submitRatings(@RequestBody DTO.RatingSubmissionRequest request) {
         if (request == null || request.projectId() <= 0 || request.studentRollNumber() <= 0) {
-            return ResponseEntity.badRequest().body(new DTO.ApiResponse("Project and student are required"));
+            throw new AppException(HttpStatus.BAD_REQUEST, "Project and student are required");
         }
         DTO.ApiResponse response = projectService.saveProjectRatings( request);
         if(response.message().equals("Submitted")){
+            log.info("Submitted rating for project id={}", request.projectId());
             return ResponseEntity.status(HttpStatus.OK).body(new DTO.ApiResponse("Ratings submitted successfully"));
         }else{
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
@@ -127,13 +113,9 @@ public class ProjectController {
     @PatchMapping("/completeProject")
     @Transactional
     ResponseEntity<?> markProjectComplete(@RequestParam int projectId){
-        try {
-            DTO.ApiResponse response = projectService.markProjectComplete(projectId);
-            return ResponseEntity.status(HttpStatus.OK).body(response);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        DTO.ApiResponse response = projectService.markProjectComplete(projectId);
+        log.info("Completed project id={}", projectId);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
 }
-

@@ -7,6 +7,8 @@ import com.CampusColab.Model.ProjectMember;
 import com.CampusColab.Model.ProjectTask;
 import com.CampusColab.Model.Student;
 import com.CampusColab.Repository.ProjectTaskRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import java.util.List;
 
 @Service
 public class ProjectTaskService {
+    private static final Logger log = LoggerFactory.getLogger(ProjectTaskService.class);
+
     private final ProjectTaskRepository taskRepository;
     private final StudentService studentService;
     private final ProjectService projectService;
@@ -42,14 +46,14 @@ public class ProjectTaskService {
             throw new AppException(HttpStatus.NOT_FOUND,"Project or student not found");
         }
         if (isCompleted(project)) {
-            return completedProjectResponse();
+            throw new AppException(HttpStatus.CONFLICT, "Task operations are unavailable after project completion");
         }
         boolean isMember = memberService.findMember(project.getProjectId()).stream()
                 .map(ProjectMember::getStudent)
                 .anyMatch(member -> member.getRollNumber() == student.getRollNumber());
 
         if (!isMember) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new DTO.ApiResponse("Tasks can only be assigned to project members"));
+            throw new AppException(HttpStatus.BAD_REQUEST, "Tasks can only be assigned to project members");
         }
 
         ProjectTask task = new ProjectTask();
@@ -61,67 +65,61 @@ public class ProjectTaskService {
         task.setStatus("ASSIGNED");
         task.setTittle(request.title());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(DTO.TaskResponse.fromEntity(taskRepository.save(task)));
+        ProjectTask savedTask = taskRepository.save(task);
+        log.info("Assigned task taskId={} projectId={}", savedTask.getTaskId(), project.getProjectId());
+        return ResponseEntity.status(HttpStatus.CREATED).body(DTO.TaskResponse.fromEntity(savedTask));
 
     }
 
     public int getCompletedTasks(int projectId){
-        try{
-            List< DTO.TaskResponse> response = taskRepository.findByProject_ProjectId(projectId).stream()
-                    .filter(task -> "COMPLETED".equalsIgnoreCase(task.getStatus()))
-                    .map(DTO.TaskResponse::fromEntity)
-                    .toList();
-            return response.size();
-        } catch (Exception e) {
-
-            throw new RuntimeException(e);
-        }
+        List<DTO.TaskResponse> response = taskRepository.findByProject_ProjectId(projectId).stream()
+                .filter(task -> "COMPLETED".equalsIgnoreCase(task.getStatus()))
+                .map(DTO.TaskResponse::fromEntity)
+                .toList();
+        log.debug("Loaded {} completed tasks for projectId={}", response.size(), projectId);
+        return response.size();
     }
 
     public List<ProjectTask> findTaskAssignToRollNumber(long rollNumber){
-        return taskRepository.findByAssignedTo_RollNumber(rollNumber);
+        List<ProjectTask> tasks = taskRepository.findByAssignedTo_RollNumber(rollNumber);
+        log.debug("Loaded {} tasks assigned to a student", tasks.size());
+        return tasks;
     }
 
     public List<ProjectTask> findTaskOnProject(int projectId){
-        return taskRepository.findByProject_ProjectId(projectId);
+        List<ProjectTask> tasks = taskRepository.findByProject_ProjectId(projectId);
+        log.debug("Loaded {} tasks for projectId={}", tasks.size(), projectId);
+        return tasks;
     }
 
 
 
     public void deleteTask(int projectId){
-        try {
-            taskRepository.deleteByProject_ProjectId(projectId);
-        }catch (Exception e){
-            throw new RuntimeException(e);
-        }
+        taskRepository.deleteByProject_ProjectId(projectId);
+        log.info("Deleted tasks for projectId={}", projectId);
     }
 
     public void deleteTask(ProjectTask task){
-        try {
-            taskRepository.delete(task);
-        }catch (Exception e){
-            throw new RuntimeException(e);
-        }
+        taskRepository.delete(task);
+        log.info("Deleted task taskId={}", task.getTaskId());
     }
     public void submitTask(ProjectTask task, DTO.SubmissionRequest request){
         if (isCompleted(task.getProject())) {
-            completedProjectResponse();
-            return;
+            throw new AppException(HttpStatus.CONFLICT, "Task operations are unavailable after project completion");
         }
         if (!"IN_PROGRESS".equals(task.getStatus())) {
-            invalidTransition(task.getStatus(), "SUBMITTED");
-            return;
+            throw invalidTransition(task.getStatus(), "SUBMITTED");
         }
         if (request == null || ((request.report() == null || request.report().isBlank())
                 && (request.workLink() == null || request.workLink().isBlank()))) {
-            ResponseEntity.badRequest().body(new DTO.ApiResponse("Add a report or work link before submitting"));
-            return;
+            throw new AppException(HttpStatus.BAD_REQUEST, "Add a report or work link before submitting");
         }
 
         task.setReport(request.report());
         task.setWorkLink(request.workLink());
         task.setSubmittedAt(LocalDateTime.now());
         task.setStatus("SUBMITTED");
+        log.info("Submitted task taskId={}", task.getTaskId());
     }
 
     public ProjectTask findTask(int taskId){
@@ -129,33 +127,30 @@ public class ProjectTaskService {
     }
     public ProjectTask saveTask(ProjectTask task){
         taskRepository.save(task);
+        log.debug("Saved task taskId={}", task.getTaskId());
         return task;
     }
 
-    public ResponseEntity<DTO.ApiResponse> completedProjectResponse() {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new DTO.ApiResponse("Task operations are unavailable after project completion"));
-    }
-
-    private ResponseEntity<DTO.ApiResponse> invalidTransition(String currentStatus, String targetStatus) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(new DTO.ApiResponse(
-                        "Cannot move a task from " + currentStatus + " to " + targetStatus));
+    private AppException invalidTransition(String currentStatus, String targetStatus) {
+        return new AppException(HttpStatus.CONFLICT,
+                "Cannot move a task from " + currentStatus + " to " + targetStatus);
     }
 
     public ResponseEntity<?> changeStatus(int taskId, String expectedStatus, String targetStatus) {
         ProjectTask task = taskRepository.findById(taskId).orElse(null);
         if (task == null) {
-            return ResponseEntity.notFound().build();
+            throw new AppException(HttpStatus.NOT_FOUND, "Task not found");
         }
         if (isCompleted(task.getProject())) {
-            return completedProjectResponse();
+            throw new AppException(HttpStatus.CONFLICT, "Task operations are unavailable after project completion");
         }
         if (!expectedStatus.equals(task.getStatus())) {
-            return invalidTransition(task.getStatus(), targetStatus);
+            throw invalidTransition(task.getStatus(), targetStatus);
         }
         task.setStatus(targetStatus);
-        return ResponseEntity.ok(DTO.TaskResponse.fromEntity(taskRepository.save(task)));
+        ProjectTask updatedTask = taskRepository.save(task);
+        log.info("Updated task status taskId={} status={}", taskId, targetStatus);
+        return ResponseEntity.ok(DTO.TaskResponse.fromEntity(updatedTask));
     }
 
     public boolean isCompleted(Project project) {

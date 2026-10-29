@@ -6,6 +6,8 @@ import com.CampusColab.Model.Project;
 import com.CampusColab.Model.ProjectMember;
 import com.CampusColab.Model.Student;
 import com.CampusColab.Repository.ProjectRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -18,6 +20,8 @@ import java.util.List;
 
 @Service
 public class ProjectService {
+    private static final Logger log = LoggerFactory.getLogger(ProjectService.class);
+
     private final ProjectRepository projectRepository;
     private final StudentService studentService;
     private final ProjectMemberService memberService;
@@ -36,73 +40,66 @@ public class ProjectService {
     }
 
     public Page<Project> findAllProjects(int page, int size){
-        return projectRepository.findAll(
+        Page<Project> projects = projectRepository.findAll(
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "projectId"))
         );
+        log.debug("Loaded {} projects for page={} size={}", projects.getNumberOfElements(), page, size);
+        return projects;
     }
 
     public List<Project> findProjects(Student student){
-        return projectRepository.findByAdmin(student);
+        List<Project> projects = projectRepository.findByAdmin(student);
+        log.debug("Loaded {} projects for student", projects.size());
+        return projects;
     }
 
     public Project findProject(int projectId){
-        try {
-            return projectRepository.findByProjectId(projectId);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        Project project = projectRepository.findByProjectId(projectId);
+        log.debug("Project lookup completed projectId={} found={}", projectId, project != null);
+        return project;
     }
 
     public void deleteProject(int projectId){
-        try {
-            projectRepository.deleteById(projectId);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        projectRepository.deleteById(projectId);
+        log.info("Deleted project record projectId={}", projectId);
     }
 
     public Project saveProject(DTO.ProjectRequest projectRequest){
-        try {
-            Student student = studentService
-                    .findStudent(projectRequest.rollNumber());
+        Student student = studentService
+                .findStudent(projectRequest.rollNumber());
 
-            if (student == null) {
-                throw new AppException(HttpStatus.NOT_FOUND,"Student Not Found");
-            }
-
-            Project project = new Project();
-
-            project.setProjectName(projectRequest.projectName());
-            project.setOverview(projectRequest.overview());
-            project.setTechStack(projectRequest.technicalTags());
-            project.setRequirements(projectRequest.requirements());
-            project.setStatus("ACTIVE");
-            project.setCreated_at(LocalDate.now());
-            project.setAdmin(student);
-
-            Project savedProject = projectRepository.save(project);
-
-            ProjectMember adminMember = new ProjectMember();
-
-            adminMember.setProject(savedProject);
-            adminMember.setRole("ADMIN");
-            adminMember.setStudent(student);
-            adminMember.setAppliedRole(projectRequest.appliedRole());
-
-            memberService.saveMember(adminMember);
-
-            return savedProject;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        if (student == null) {
+            throw new AppException(HttpStatus.NOT_FOUND,"Student Not Found");
         }
+
+        Project project = new Project();
+
+        project.setProjectName(projectRequest.projectName());
+        project.setOverview(projectRequest.overview());
+        project.setTechStack(projectRequest.technicalTags());
+        project.setRequirements(projectRequest.requirements());
+        project.setStatus("ACTIVE");
+        project.setCreated_at(LocalDate.now());
+        project.setAdmin(student);
+
+        Project savedProject = projectRepository.save(project);
+
+        ProjectMember adminMember = new ProjectMember();
+
+        adminMember.setProject(savedProject);
+        adminMember.setRole("ADMIN");
+        adminMember.setStudent(student);
+        adminMember.setAppliedRole(projectRequest.appliedRole());
+
+        memberService.saveMember(adminMember);
+
+        log.info("Created project projectId={}", savedProject.getProjectId());
+        return savedProject;
     }
 
     public void saveProject(Project project){
-        try{
-            projectRepository.save(project);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        projectRepository.save(project);
+        log.debug("Saved project projectId={}", project.getProjectId());
     }
 
     public DTO.ApiResponse saveProjectRatings(DTO.RatingSubmissionRequest request){
@@ -111,7 +108,7 @@ public class ProjectService {
             throw new AppException(HttpStatus.NOT_FOUND,"Project not found");
         }
         if ("COMPLETED".equalsIgnoreCase(project.getStatus())) {
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Project is not Completed");
+            throw new AppException(HttpStatus.CONFLICT, "Ratings cannot be submitted after project completion");
         }
 
         Student student = studentService.findStudent(request.studentRollNumber());
@@ -122,7 +119,7 @@ public class ProjectService {
         boolean isMember = memberService.findMember(request.projectId()).stream()
                 .anyMatch(member -> member.getStudent().getRollNumber() == request.studentRollNumber());
         if (!isMember) {
-            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,"Student is not a project member");
+            throw new AppException(HttpStatus.FORBIDDEN, "Student is not a project member");
         }
         if (project.hasRatingFrom(request.studentRollNumber())) {
             throw new AppException(HttpStatus.CONFLICT,"Rating has already been submitted for this student");
@@ -140,6 +137,7 @@ public class ProjectService {
         studentService.saveStudent(student);
         saveProject(project);
         notificationService.sendRatingNotification(project, student, request.rating(), request.comment());
+        log.info("Saved project rating projectId={}", request.projectId());
         return new DTO.ApiResponse("Submitted");
     }
 
@@ -167,6 +165,7 @@ public class ProjectService {
             studentService.saveStudent(student);
             notificationService.sendCompletionNotification(project, student);
         }
+        log.info("Completed project projectId={} memberCount={}", projectId, members.size());
         return new DTO.ApiResponse("Project Completed");
     }
 

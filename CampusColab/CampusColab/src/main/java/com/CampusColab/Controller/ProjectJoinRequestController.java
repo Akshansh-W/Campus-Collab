@@ -3,6 +3,9 @@ package com.CampusColab.Controller;
 import com.CampusColab.DTO.DTO;
 import com.CampusColab.Model.*;
 import com.CampusColab.Service.ProjectJoinRequestService;
+import com.CampusColab.ExceptionHandler.AppException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +17,8 @@ import java.util.List;
 @RequestMapping("/pjr")
 public class ProjectJoinRequestController {
 
+    private static final Logger log = LoggerFactory.getLogger(ProjectJoinRequestController.class);
+
     private final ProjectJoinRequestService joinRequestService;
 
     public ProjectJoinRequestController(ProjectJoinRequestService joinRequestService){
@@ -23,46 +28,33 @@ public class ProjectJoinRequestController {
     @PostMapping("/submitRequest")
     ResponseEntity<?> submitJoinReq(@RequestBody DTO.JoinRequest joinRequest){
         if(joinRequest == null){
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            throw new AppException(HttpStatus.BAD_REQUEST, "Join request details are required");
         }
-        try{
-            joinRequestService.submitJoinRequest(joinRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).build();
-
-        }catch (Exception e){
-            throw new RuntimeException(e);
-        }
+        joinRequestService.submitJoinRequest(joinRequest);
+        log.info("Submitted project join request for project id={}", joinRequest.projectId());
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @GetMapping("/getAllRequests")
     ResponseEntity<?> getAllRequests(@RequestParam int projectId){
-        try {
-            List<DTO.JoinRequestResponse> response = joinRequestService.getAllRequest(projectId);
-            return ResponseEntity.status(HttpStatus.OK).body(response);
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        List<DTO.JoinRequestResponse> response = joinRequestService.getAllRequest(projectId);
+        log.info("Fetched {} join requests for project id={}", response.size(), projectId);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     @PostMapping("/deleteRequest")
     public ResponseEntity<?> deleteRequest(@RequestParam int requestId) {
-        try {
-            joinRequestService.deleteRequest(requestId);
-            return ResponseEntity.ok().build();
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        joinRequestService.deleteRequest(requestId);
+        log.info("Deleted join request id={}", requestId);
+        return ResponseEntity.ok().build();
     }
 
 
     @PostMapping("/acceptRequest")
     public ResponseEntity<?> acceptRequest(@RequestParam int requestId){
-        try{
-            joinRequestService.acceptRequest(requestId);
-            return ResponseEntity.status(HttpStatus.OK).build();
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        joinRequestService.acceptRequest(requestId);
+        log.info("Accepted join request id={}", requestId);
+        return ResponseEntity.status(HttpStatus.OK).build();
     }
 
 }

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.GenerateContentResponse;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,8 @@ import java.util.List;
 
 @Service
 public class AIService {
+
+    private static final Logger log = LoggerFactory.getLogger(AIService.class);
 
     private final Client client;
     private final StudentRepository studentRepository;
@@ -66,6 +70,7 @@ public class AIService {
                 """.formatted(projectName,techStack,requirements);
 
         GenerateContentResponse response = client.models.generateContent("gemini-3.5-flash",prompt,null);
+        log.info("Generated project overview");
         return response.text();
     }
 
@@ -92,15 +97,16 @@ public class AIService {
                     """.formatted(projectData,student.getTechnicalInterest());
 
         GenerateContentResponse response = client.models.generateContent("gemini-3.7-flash",prompt,null);
-
-
-            return Arrays.stream(response.text().split(","))
+        int[] recommendedProjects = Arrays.stream(response.text().split(","))
                     .mapToInt(Integer::parseInt)
                     .toArray();
+        log.info("Generated {} project recommendations", recommendedProjects.length);
+        return recommendedProjects;
     }
 
     public String getBestProject(){
         List<Project> projects = projectRepository.findProjectsInsertedInPreviousMonth();
+        log.info("Loaded {} candidates for project-of-the-month selection", projects.size());
         String prompt = """
                 Act as an expert Judge, you have the projectId, it's completed task and 
                 the idea of the project. You have to give only 1 projectId from the following 
@@ -119,6 +125,7 @@ public class AIService {
         }
 
         GenerateContentResponse response = client.models.generateContent("gemini-3.7-flash",prompt,null);
+        log.info("Selected project-of-the-month candidate");
         return response.text();
 
     }
@@ -149,6 +156,7 @@ public class AIService {
                     );
 
             if (project == null) {
+                log.warn("AI selected a project that does not exist projectId={}", selection.projectId());
                 return;
             }
 
@@ -164,14 +172,11 @@ public class AIService {
 
             // 5. Save it
             monthRepository.save(projectOfMonth);
-
+            log.info("Saved project of the month projectId={} year={} month={}",
+                    selection.projectId(), projectOfMonth.getYear(), projectOfMonth.getMonth());
         } catch (Exception e) {
-
-            e.printStackTrace();
-
-            System.out.println(
-                    "Failed to select Project of the Month"
-            );
+            log.error("Failed to select project of the month", e);
+            throw new IllegalStateException("Failed to select project of the month", e);
         }
     }
 

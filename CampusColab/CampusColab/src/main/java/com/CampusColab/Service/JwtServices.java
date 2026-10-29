@@ -5,6 +5,8 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
@@ -12,6 +14,8 @@ import java.util.Date;
 
 @Service
 public class JwtServices {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtServices.class);
 
     private Key getKey(){
         String SECRET_KEY = "SecretKeyForAssigningTokenTOUserWheneverHeOrSheLoggedInIntoTheWebsite";
@@ -57,6 +61,7 @@ public class JwtServices {
 
             return token;
         } catch (JwtException | IllegalArgumentException e) {
+            log.debug("Rejected an invalid or expired JWT");
             return null;
         }
     }
