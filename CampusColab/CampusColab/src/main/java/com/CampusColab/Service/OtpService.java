@@ -1,9 +1,13 @@
 package com.CampusColab.Service;
 
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import com.CampusColab.ExceptionHandler.AppException;
+import com.resend.Resend;
+import com.resend.core.exception.ResendException;
+import com.resend.services.emails.model.CreateEmailOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -16,31 +20,48 @@ public class OtpService {
 
     private static final Logger log = LoggerFactory.getLogger(OtpService.class);
 
-    JavaMailSender mailSender;
-    public OtpService(JavaMailSender mailSender){
-        this.mailSender = mailSender;
+    private final Resend resend;
+    private final String from;
+
+    public OtpService(
+            @Value("${resend.api.key}") String apiKey,
+            @Value("${resend.from}") String from
+    ) {
+        this.resend = new Resend(apiKey);
+        this.from = from;
     }
 
     public record OtpData(String otp,LocalDateTime expiryTime){}
-    Map<String,OtpData> otpStorage = new ConcurrentHashMap<>();
+    private final Map<String,OtpData> otpStorage = new ConcurrentHashMap<>();
 
 
     public void generateAndSendOtp(String email){
         String otp = String.format("%04d",new SecureRandom().nextInt(10000));
         int otpExpireTime = 5;
         LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(otpExpireTime);
+        OtpData otpData = new OtpData(otp, expiryTime);
 
-        otpStorage.put(email,new OtpData(otp,expiryTime));
+        otpStorage.put(email, otpData);
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setSubject("OTP Verification");
-        message.setText("Thanks for choosing CampusColab, Your one time password for Signing " +
-                "in is "+otp+", don't share it with anybody");
-
-        mailSender.send(message);
-        log.info("OTP verification email sent");
-
+        try {
+            CreateEmailOptions message = CreateEmailOptions.builder()
+                    .from(from)
+                    .to(email)
+                    .subject("OTP Verification")
+                    .text("Thanks for choosing CampusColab, Your one time password for Signing " +
+                            "in is " + otp + ", don't share it with anybody")
+                    .build();
+            resend.emails().send(message);
+            log.info("OTP verification email sent");
+        } catch (ResendException e) {
+            otpStorage.remove(email, otpData);
+            log.error("OTP email delivery failed ({})", e.getClass().getSimpleName());
+            throw new AppException(HttpStatus.SERVICE_UNAVAILABLE, "Unable to send OTP email");
+        } catch (RuntimeException e) {
+            otpStorage.remove(email, otpData);
+            log.error("OTP email delivery failed ({})", e.getClass().getSimpleName());
+            throw new AppException(HttpStatus.SERVICE_UNAVAILABLE, "Unable to send OTP email");
+        }
     }
 
     public Boolean validateOtp(String email, String userOtp) {
