@@ -1,19 +1,21 @@
 package com.CampusColab.Service;
 
-import com.CampusColab.ExceptionHandler.AppException;
-import com.resend.Resend;
-import com.resend.core.exception.ResendException;
-import com.resend.services.emails.model.CreateEmailOptions;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.CampusColab.ExceptionHandler.AppException;
+import com.CampusColab.Service.OtpService.OtpData;
+import com.resend.Resend;
+import com.resend.core.exception.ResendException;
+import com.resend.services.emails.model.CreateEmailOptions;
 
 @Service
 public class OtpService {
@@ -54,9 +56,9 @@ public class OtpService {
             resend.emails().send(message);
             log.info("OTP verification email sent");
         } catch (ResendException e) {
-            otpStorage.remove(email, otpData);
-            log.error("OTP email delivery failed ({})", e.getClass().getSimpleName());
-            throw new AppException(HttpStatus.SERVICE_UNAVAILABLE, "Unable to send OTP email");
+            log.error("OTP email delivery failed: {}", e.getMessage(), e);
+            otpStorage.remove(email);
+            throw new RuntimeException("Unable to send OTP email", e);
         } catch (RuntimeException e) {
             otpStorage.remove(email, otpData);
             log.error("OTP email delivery failed ({})", e.getClass().getSimpleName());
